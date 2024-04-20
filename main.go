@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 )
 
 type ViaCep struct {
@@ -22,25 +21,49 @@ type ViaCep struct {
 	Siafi       string `json:"siafi"`
 }
 
-const url = "http://viacep.com.br/ws/69086581/json/"
-
 func main() {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /viacep/{cep}", SearchCEP)
+	log.Println("Starting server on port 8080")
+	err := http.ListenAndServe(":8080", mux)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+}
 
-	fmt.Println(url)
-	req, err := http.Get(url)
+func SearchCEP(w http.ResponseWriter, r *http.Request) {
+	cep := r.PathValue("cep")
+	w.Header().Set("Content-Type", "application/json")
+	err := json.NewEncoder(w).Encode(cep)
 	if err != nil {
-		log.Println("Error ao fazer requisicao: ", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
-	defer req.Body.Close()
-	res, err := io.ReadAll(req.Body)
+	reqCep, err := getCep(cep)
 	if err != nil {
-		log.Println(os.Stderr, "Erro ao ler resposta: ", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
+	err = json.NewEncoder(w).Encode(reqCep)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
 
-	var data ViaCep
-	err = json.Unmarshal(res, &data)
+func getCep(cep string) (*ViaCep, error) {
+	url := "http://viacep.com.br/ws/" + cep + "/json/"
+	resp, err := http.Get(url)
 	if err != nil {
-		log.Println(os.Stderr, "Erro ao fazer parser da respotas", err)
+		return nil, err
 	}
-	fmt.Println(data)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	var viaCep *ViaCep
+	err = json.Unmarshal(body, &viaCep)
+	if err != nil {
+		return nil, err
+	}
+	return viaCep, nil
 }
